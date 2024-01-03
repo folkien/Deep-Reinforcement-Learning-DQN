@@ -28,11 +28,14 @@ class DQN:
         self.discount_factor = discount_factor
         self.num_of_episodes = num_of_episodes
         self.game = gym_game
-        self.is_render = is_render
+
+        # Render_mode : Set if enabled
+        render_mode = None
+        if is_render:
+            render_mode = "human"
 
         self.environment = gym.make(gym_game,
-                                    render_mode="human"
-                                    # metadata={'render.modes': ['human', 'rgb_array']}
+                                    render_mode=render_mode,
                                     )
 
         try:
@@ -166,10 +169,6 @@ class DQN:
 
                 # Model : Get the next state
                 next_state, reward, done, _result, _dictionary = self.environment.step(action)
-
-                # Mode : Render
-                if self.is_render:
-                    self.environment.render()
 
                 next_state = self.state_reshape(next_state)
                 self.remember(state, next_state, action, reward, done)

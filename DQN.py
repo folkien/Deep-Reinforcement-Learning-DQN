@@ -67,6 +67,7 @@ class DQN:
 
         print("state size is: ",self.state_size)
         print("action size is: ", self.action_size)
+        self.memory_min_size = 100
         self.memory = deque(maxlen=20000)
         self.model = self.create_model()
         self.tensorboard = TensorBoard('./logs', update_freq=1)
@@ -140,8 +141,8 @@ class DQN:
         experience replay. find the q-value and train the neural network model with state as input and q-values as targets
         :return:
         """
-        # Check : If memory < batch_size
-        if len(self.memory) < self.batch_size:
+        # Check : If memory size is less than minimum size, return
+        if len(self.memory) < self.memory_min_size:
             return
 
         # Epsilon : Decay to min
@@ -157,15 +158,18 @@ class DQN:
             target = reward
 
             if not done:
-                target = reward + self.discount_factor * np.max(self.model.predict(next_state)[0])
+                target = self.model.predict(next_state,verbose=0,use_multiprocessing=True)
+                target = reward + self.discount_factor * np.max(target[0])
 
-            final_target = self.model.predict(state)
+            final_target = self.model.predict(state,
+                                              verbose=0,
+                                              use_multiprocessing=True)
             final_target[0][action] = target
 
             # Model : Fit
             self.model.fit(state,
                            final_target,
-                           verbose=0,
+                           use_multiprocessing=True,
                             callbacks=[self.tensorboard]
                            )
 
@@ -182,7 +186,8 @@ class DQN:
             state = self.state_reshape(state_tuple[0])
             r = []
             t = 0
-            while True:
+
+            while True:    
                 # Model : Act
                 action = self.act(state)
 
@@ -233,7 +238,7 @@ class DQN:
 game = "CartPole-v1" # bd
 dqn = DQN(game, 
           num_of_episodes=500,
-          batch_size=1024,
+          batch_size=4096,
           is_render=False
           )
 dqn.play()

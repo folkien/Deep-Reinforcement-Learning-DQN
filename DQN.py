@@ -6,6 +6,7 @@ from keras.models import Model
 from keras.layers import Dense, Input, Flatten, Conv2D, MaxPooling2D
 import random
 from collections import deque
+from keras.callbacks import TensorBoard
 
 class DQN():
     def __init__(self, gym_game, epsilon=1, epsilon_decay=0.995, epsilon_min=0.01, batch_size=32, discount_factor=0.9, num_of_episodes=500):
@@ -16,7 +17,9 @@ class DQN():
         self.discount_factor = discount_factor
         self.num_of_episodes = num_of_episodes
         self.game = gym_game
+
         self.environment = gym.make(gym_game)
+
         try:
             try:
                 shape = self.environment.observation_space.shape
@@ -46,6 +49,7 @@ class DQN():
         print("action size is: ", self.action_size)
         self.memory = deque(maxlen=20000)
         self.model = self.create_model()
+        self.tensorboard = TensorBoard('./logs', update_freq=1)
         print(self.model.summary())
 
     def create_model(self):
@@ -121,7 +125,13 @@ class DQN():
                 target = reward + self.discount_factor * np.max(self.model.predict(next_state)[0])
             final_target = self.model.predict(state)
             final_target[0][action] = target
-            self.model.fit(state,final_target,verbose=0)
+            self.model.fit(state,
+                           final_target,
+                           verbose=0,
+                            callbacks=[self.tensorboard]
+                           )
+
+
 
     def play(self):
         """
@@ -129,13 +139,13 @@ class DQN():
         :return:
         """
         for episode in range(self.num_of_episodes+1):
-            state = self.environment.reset()
-            state = self.state_reshape(state)
+            state_tuple = self.environment.reset()
+            state = self.state_reshape(state_tuple[0])
             r = []
             t = 0
             while True:
                 action = self.act(state)
-                next_state, reward, done, _ = self.environment.step(action)
+                next_state, reward, done, _result, _dictionary = self.environment.step(action)
                 next_state = self.state_reshape(next_state)
                 self.remember(state, next_state, action, reward, done)
                 state = next_state
@@ -146,10 +156,11 @@ class DQN():
                     print("episode number: ", episode,", reward: ",r , "time score: ", t)
                     self.save_info(episode, r, t)
                     break
+
             self.replay()
 
     def save_info(self, episode, reward, time):
-        file = open("./Plot/DQN-"+self.game+"-"+str(self.num_of_episodes)+"-episodes-batchsize-"+str(self.batch_size), 'a')
+        file =  
         file.write(str(episode)+" "+str(reward)+" "+str(time)+" \n")
         file.close()
 

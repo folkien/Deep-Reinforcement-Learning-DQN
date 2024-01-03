@@ -34,10 +34,12 @@ class DQN:
         if is_render:
             render_mode = "human"
 
+        # Environment : Create the environment
         self.environment = gym.make(gym_game,
                                     render_mode=render_mode,
                                     )
 
+        # Environment : Set the seed
         try:
             try:
                 shape = self.environment.observation_space.shape
@@ -85,6 +87,7 @@ class DQN:
             out = Dense(24, activation="relu")(input)
             out = Dense(24, activation="relu")(out)
             out = Dense(self.action_size, activation="linear")(out)
+
         elif self.state_mode == "observation":
             # if the state is an image
             out = Conv2D(128, kernel_size=(5,5), padding="same", activation="relu")(input)
@@ -113,8 +116,11 @@ class DQN:
         :param state:
         :return:
         """
+        # Random : Act randomly by probability of epsilon
         if np.random.rand() < self.epsilon:
             return random.randrange(self.action_size)
+        
+        # Model : Predict the next move by the neural network model
         return np.argmax(self.model.predict(state)[0])
 
     def remember(self, state, next_state, action, reward, done):
@@ -134,15 +140,25 @@ class DQN:
         experience replay. find the q-value and train the neural network model with state as input and q-values as targets
         :return:
         """
+        # Epsilon : Decay to min
         if self.epsilon > self.epsilon_min:
             self.epsilon *= self.epsilon_decay
-        batch = random.choices(self.memory,k=self.batch_size)
+
+        # Memory : Sample a batch
+        batch = random.choices(self.memory,
+                               k=self.batch_size)
+
+        # Batch : Train
         for state, next_state, action, reward, done in batch:
             target = reward
+
             if not done:
                 target = reward + self.discount_factor * np.max(self.model.predict(next_state)[0])
+
             final_target = self.model.predict(state)
             final_target[0][action] = target
+
+            # Model : Fit
             self.model.fit(state,
                            final_target,
                            verbose=0,
@@ -158,7 +174,6 @@ class DQN:
         """
         start_time = time.time()
         for episode in range(self.num_of_episodes+1):
-            episode_time_start = time.time()
             state_tuple = self.environment.reset()
             state = self.state_reshape(state_tuple[0])
             r = []
@@ -170,17 +185,27 @@ class DQN:
                 # Model : Get the next state
                 next_state, reward, done, _result, _dictionary = self.environment.step(action)
 
+                # Model : Reshape the next state
                 next_state = self.state_reshape(next_state)
+
+                # Model : Remember the experience
                 self.remember(state, next_state, action, reward, done)
+
+                # State : Update
                 state = next_state
                 r.append(reward)
                 t += 1
 
+                # Episode : Print, if terminated
                 if done:
-                    episode_time = time.time() - episode_time_start
-                    r = np.mean(r)
-                    print("episode number: ", episode,", reward: ",r , "time score: ", t, "episode time: ", episode_time)
-                    self.save_info(episode, r, t)
+                    # Episode avg time
+                    episode_time_avg = (time.time() - start_time) / (episode + 1)
+
+                    # Cumulative reward
+                    cum_reward = np.sum(r)
+                    
+                    print(f"episode : {episode}, cum reward: {cum_reward}, episode avg time: {episode_time_avg}")
+
                     break
 
             self.replay()
@@ -204,6 +229,6 @@ class DQN:
 game = "CartPole-v1" # bd
 dqn = DQN(game, 
           num_of_episodes=500,
-          is_render=True
+          is_render=False
           )
 dqn.play()

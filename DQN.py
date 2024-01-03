@@ -1,4 +1,5 @@
 
+import time
 import numpy as np
 import gym
 import keras
@@ -8,8 +9,18 @@ import random
 from collections import deque
 from keras.callbacks import TensorBoard
 
-class DQN():
-    def __init__(self, gym_game, epsilon=1, epsilon_decay=0.995, epsilon_min=0.01, batch_size=32, discount_factor=0.9, num_of_episodes=500):
+class DQN:
+
+    def __init__(self, 
+                 gym_game, 
+                 epsilon=1, 
+                 epsilon_decay=0.995, 
+                 epsilon_min=0.01, 
+                 batch_size=32, 
+                 discount_factor=0.9, 
+                 num_of_episodes=500,
+                 is_render:bool=False
+                 ):
         self.epsilon = epsilon
         self.epsilon_decay = epsilon_decay
         self.epsilon_min = epsilon_min
@@ -17,8 +28,12 @@ class DQN():
         self.discount_factor = discount_factor
         self.num_of_episodes = num_of_episodes
         self.game = gym_game
+        self.is_render = is_render
 
-        self.environment = gym.make(gym_game)
+        self.environment = gym.make(gym_game,
+                                    render_mode="human"
+                                    # metadata={'render.modes': ['human', 'rgb_array']}
+                                    )
 
         try:
             try:
@@ -138,34 +153,58 @@ class DQN():
         play for num_of_episodes. remember the experiences in each episode. replay the experience at the end of the episode
         :return:
         """
+        start_time = time.time()
         for episode in range(self.num_of_episodes+1):
+            episode_time_start = time.time()
             state_tuple = self.environment.reset()
             state = self.state_reshape(state_tuple[0])
             r = []
             t = 0
             while True:
+                # Model : Act
                 action = self.act(state)
+
+                # Model : Get the next state
                 next_state, reward, done, _result, _dictionary = self.environment.step(action)
+
+                # Mode : Render
+                if self.is_render:
+                    self.environment.render()
+
                 next_state = self.state_reshape(next_state)
                 self.remember(state, next_state, action, reward, done)
                 state = next_state
                 r.append(reward)
                 t += 1
+
                 if done:
+                    episode_time = time.time() - episode_time_start
                     r = np.mean(r)
-                    print("episode number: ", episode,", reward: ",r , "time score: ", t)
+                    print("episode number: ", episode,", reward: ",r , "time score: ", t, "episode time: ", episode_time)
                     self.save_info(episode, r, t)
                     break
 
             self.replay()
 
+        total_time = time.time() - start_time
+
+        print(f"Training finished.\n{self.num_of_episodes} episodes trained in {total_time} seconds.")
+        print(f"Avg episode time: {total_time / self.num_of_episodes} seconds.")
+
+        # Model : Save the model
+        self.model.save("./Model/DQN-"+self.game+"-"+str(self.num_of_episodes)+"-episodes-batchsize-"+str(self.batch_size))
+
+
     def save_info(self, episode, reward, time):
-        file =  
+        file = open("./Plot/DQN-"+self.game+"-"+str(self.num_of_episodes)+"-episodes-batchsize-"+str(self.batch_size), 'a')
         file.write(str(episode)+" "+str(reward)+" "+str(time)+" \n")
         file.close()
 
 
 # game = "Pong-v0" # bd
 game = "CartPole-v1" # bd
-dqn = DQN(game, num_of_episodes=5000)
+dqn = DQN(game, 
+          num_of_episodes=500,
+          is_render=True
+          )
 dqn.play()

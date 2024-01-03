@@ -140,6 +140,10 @@ class DQN:
         experience replay. find the q-value and train the neural network model with state as input and q-values as targets
         :return:
         """
+        # Check : If memory < batch_size
+        if len(self.memory) < self.batch_size:
+            return
+
         # Epsilon : Decay to min
         if self.epsilon > self.epsilon_min:
             self.epsilon *= self.epsilon_decay
@@ -229,6 +233,7 @@ class DQN:
 game = "CartPole-v1" # bd
 dqn = DQN(game, 
           num_of_episodes=500,
+          batch_size=1024,
           is_render=False
           )
 dqn.play()

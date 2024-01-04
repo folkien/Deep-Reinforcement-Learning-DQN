@@ -1,13 +1,10 @@
 from collections import namedtuple
 from enum import Enum
-from time import sleep, time
 import gym
 import numpy as np
 import pandas as pd
 from helpers.agent_testing import agent_test
-import math
-
-from helpers.ploting import plot_rewards
+from helpers.ploting import plot_checkpoint_rewards, plot_rewards
 
 # CartPole-v1 state:
 CartPoleState = namedtuple('CartPoleState', ['cart_pos', 'cart_vel', 'pole_angle', 'pole_ang_vel'])
@@ -45,11 +42,13 @@ state_bounds[3] = [-100, 100]
 q_table_shape = n_states + [env.action_space.n]
 q_table = np.zeros(q_table_shape)
 
-# States explored : Set of explored states
+# States explored : Set of explored states ( for % of explored states calculation)
 q_table_explored = set()
 
 # Number of training episodes
-num_episodes = 1000
+num_episodes = 10000
+# Checkpoint validation : Validatation  checkpoint every N episodes
+num_episodes_validation = num_episodes // 10
 
 # Learning rate - used for updating Q-values.
 # -------------------------------
@@ -131,8 +130,10 @@ def update_q_table(state : tuple, action : CartPoleAction, reward : float, next_
     # States explored : Add state to explored states
     q_table_explored.add(state)
 
-# Cumulative rewards : List of cumulative rewards for each episode
-cum_rewards = []
+# Training cumulative rewards : List of cumulative rewards for each episode
+training_cum_rewards = []
+# Validation cumulative rewards : List of tuples (episode, average reward) for each validation checkpoint.
+validation_cum_rewards = []
     
 # Loop of training : For N episodes
 for episode in range(num_episodes):
@@ -181,7 +182,23 @@ for episode in range(num_episodes):
     epsilon = max(epsilon * epsilon_decay, min_epsilon) 
 
     # Cumulative rewards : Add cumulative reward for this episode
-    cum_rewards.append(cum_reward)
+    training_cum_rewards.append(cum_reward)
+
+    # Validation checkpoint : If episode is validation checkpoint
+    if (episode % num_episodes_validation == 0):
+        # Info : Print validation checkpoint informations
+        print(f"Validation checkpoint. Episode {episode}/{num_episodes} {training_completness:2.2f}%. Q-Explored {q_table_explored_completness}, epsilon: {epsilon}")
+
+        # Validation : Test model on single episode
+        validation_test_rewards  = [ agent_test(env, 
+                                           state_bounds, 
+                                           n_states, 
+                                           choose_action, 
+                                           discretize_state, 
+                                           delay_time=None) for _index in range(30) ]
+
+        # Validation cumulative rewards : Add cumulative reward for this episode
+        validation_cum_rewards.append((episode, np.median(validation_test_rewards)))
 
 
 # Qtable filename with number of training episodes, epsilon and alpha
@@ -194,9 +211,18 @@ np.save(f"{models_directory}/{filename}", q_table)
 # Training rewards : Plot to file
 filename = f"training_rewards_{episode}_episodes_{epsilon}_epsilon_{alpha}_alpha.png"
 plot_rewards(f"{models_directory}/{filename}", 
-             cum_rewards,
+             training_cum_rewards,
              data_label='Best cum. rewards reached during training',
              )
+
+# Training checkpoint average rewards : Plot to file
+filename = f"validation_rewards_{episode}_episodes_{epsilon}_epsilon_{alpha}_alpha.png"
+plot_checkpoint_rewards(f"{models_directory}/{filename}",
+                         validation_cum_rewards,
+                        data_label=f'Cum. rewards reached during validation {len(validation_cum_rewards)} checkpoints.',
+                        xlabel='Validation checkpoint episode',
+                        ylabel='Median checkpoint reward',
+                        )
 
 # Info : Print training informations
 print(f"Training completness: {training_completness:2.2f}%.")

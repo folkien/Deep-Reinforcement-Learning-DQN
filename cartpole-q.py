@@ -23,8 +23,12 @@ env = gym.make('CartPole-v1')
 # Podział stanu na przedziały (dyskretyzacja na 20 przedziałów)
 n_states = [50, 50, 50, 50] # Liczba przedziałów dla każdego elementu stanu
 
-# Ograniczenia dla stanu
+# State : Limits
 state_bounds = list(zip(env.observation_space.low, env.observation_space.high))
+# - cart_vel : -20 - 20
+state_bounds[1] = [-20, 20]
+# - pole_vel : -100 - 100
+state_bounds[3] = [-100, 100]
 
 # Inicjalizacja tabeli Q.
 # - Mamy 4 elementy stanu (obserwacji) zdykretyzowane na 20 przedziałów,
@@ -35,8 +39,11 @@ state_bounds = list(zip(env.observation_space.low, env.observation_space.high))
 q_table_shape = n_states + [env.action_space.n]
 q_table = np.zeros(q_table_shape)
 
+# States explored : Set of explored states
+q_table_explored = set()
+
 # Number of training episodes
-num_episodes = 5000
+num_episodes = 1000
 
 # Learning rate - used for updating Q-values.
 # -------------------------------
@@ -112,17 +119,23 @@ def update_q_table(state : tuple, action : CartPoleAction, reward : float, next_
     # Q-Table : Get the best q value for the next state
     best_next_action = np.argmax(q_table[next_state])
 
-
     # Q-Table : Compute the TD error (Bellman equation)
     q_table[state + (action,)] += alpha * (reward + gamma * q_table[next_state + (best_next_action,)] - q_table[state + (action,)])
+
+    # States explored : Add state to explored states
+    q_table_explored.add(state)
 
 # Loop of training : For N episodes
 for episode in range(num_episodes):
     # Training completness : Calculate
     training_completness = episode / num_episodes * 100
 
+    # Q-Table  explored : Calculate
+    q_table_explored_completness = len(q_table_explored) / np.product(q_table_shape) * 100
+
+
     # Info : Print episode informations
-    print(f"Episode {episode} started {training_completness:2.2f}%. Epsilon: {epsilon}")
+    print(f"Episode {episode}/{num_episodes} {training_completness:2.2f}%. Q-Explored {q_table_explored_completness}, epsilon: {epsilon}")
 
     # State : Get initial episode state
     state_initial_dict = env.reset()
@@ -161,6 +174,10 @@ filename = f"q_table_{episode}_episodes_{epsilon}_epsilon_{alpha}_alpha.npy"
 
 # Q-Table : Save Q-table as numpy array pickle
 np.save(f"{models_directory}/{filename}", q_table)
+
+# Info : Print training informations
+print(f"Training completness: {training_completness:2.2f}%.")
+print(f"Q states explored {len(q_table_explored)} of {np.product(q_table_shape)}.")
 
 
 # Environment : Close

@@ -3,6 +3,7 @@ from enum import Enum
 from time import sleep, time
 import gym
 import numpy as np
+import pandas as pd
 from helpers.agent_testing import agent_test
 import math
 
@@ -20,7 +21,7 @@ class CartPoleAction(int, Enum):
 env = gym.make('CartPole-v1')
 
 # Podział stanu na przedziały (dyskretyzacja na 20 przedziałów)
-n_states = [20, 20, 20, 20] # Liczba przedziałów dla każdego elementu stanu
+n_states = [50, 50, 50, 50] # Liczba przedziałów dla każdego elementu stanu
 
 # Ograniczenia dla stanu
 state_bounds = list(zip(env.observation_space.low, env.observation_space.high))
@@ -36,14 +37,28 @@ q_table = np.zeros(q_table_shape)
 
 # Number of training episodes
 num_episodes = 5000
+
 # Learning rate - used for updating Q-values.
+# -------------------------------
 #  - Means how much we value new information compared to previous information.
-alpha = 0.1
+alpha = 0.8
+# Min alpha - minimum value of learning rate
+min_alpha = 0.1
+# Alpha decay - used for decreasing alpha over time.
+#   alpha' = alpha * alpha_decay
+#   - means how much we decay alpha after each episode. (reduce learning rate over time)
+#   - calculate based on trainig episodes number
+#   - After 50% of training time alpha should decay to min_alpha
+alpha_decay = (min_alpha / alpha) ** (1.0 / (num_episodes * 0.5))
+
+
+
 # Discount factor - used for updating Q-values
 # - Means how much we value future rewards compared to present rewards.
 gamma = 0.99
 
 # Epsilon - used for exploration.
+# -------------------------------
 # - Means how much we choose to explore instead of exploit.
 epsilon = 1.0
 # Min epsilon
@@ -133,6 +148,9 @@ for episode in range(num_episodes):
         # State : Update state
         state = next_state
 
+    # Learning rate : Decay alpha after each episode
+    alpha = max(alpha * alpha_decay, min_alpha)
+
     # Exploration : Decay epsilon after each episode
     epsilon = max(epsilon * epsilon_decay, min_epsilon) 
 
@@ -162,11 +180,31 @@ rewards = [ agent_test(env_test,
                     choose_action, 
                     discretize_state, 
                     delay_time=None)
-            for index in range(10) ]
+            for index in range(30) ]
 
 # Info : Print average reward and standard deviation
 print(f"Testing : Average reward: {np.mean(rewards)}")
 print(f"Testing : Standard deviation: {np.std(rewards)}")
+
+
+# Results dataframe : Load if exists
+tests_directory = "tests"
+try:
+    results_df = pd.read_csv(f"{tests_directory}/results.csv", sep=";", index_col=False)
+except:
+    results_df = pd.DataFrame(columns=['episodes', 'reward_mean', 'reward_std'])
+    
+
+# Dataframe : Create current results dataframe    
+results_current_df = pd.DataFrame(columns=['episodes', 'reward_mean', 'reward_std'],
+                                    data=[[num_episodes, np.mean(rewards), np.std(rewards)]])
+
+# Results dataframe : Concatenate
+results_df = pd.concat([results_df, results_current_df], axis=0)
+
+# Results dataframe : Save
+results_df.to_csv(f"{tests_directory}/results.csv", index=False, sep=";")
+
 
 # Environment : Close
 env_test.close()

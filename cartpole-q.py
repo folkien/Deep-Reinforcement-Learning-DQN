@@ -1,6 +1,10 @@
+from collections import namedtuple
 import gym
 import numpy as np
 import math
+
+# CartPole-v1 state:
+CartPoleState = namedtuple('CartPoleState', ['cart_pos', 'cart_vel', 'pole_angle', 'pole_ang_vel'])
 
 # Inicjalizacja środowiska
 env = gym.make('CartPole-v1')
@@ -55,7 +59,7 @@ def discretize_state(state : np.ndarray,
         # State : Add to the list of discretized values
         discretized.append(new_state)
 
-    return tuple(discretized)
+    return CartPoleState(*discretized)
 
 def choose_action(state : tuple) -> int:
     ''' Choose an action for the current state according to the Q policy'''

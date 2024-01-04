@@ -47,10 +47,23 @@ q_table_explored = set()
 
 # Number of training episodes
 num_episodes = 500_000
-# Checkpoint validation : Validatation  checkpoint every N episodes
-num_episodes_validation = num_episodes // 10
 # Number of episodes to test/average model
 num_episodes_test = 7
+# Validation checkpoints : Episode number when to test
+validation_checkpoints = [0, 
+                          100, 
+                          250,
+                          500,
+                          1_000, 
+                          2_500,
+                          5_000,
+                          10_000, 
+                          25_000,
+                          50_000,
+                          100_000, 
+                          250_000, 
+                          500_000 ]
+
 
 # Learning rate - used for updating Q-values.
 # -------------------------------
@@ -187,7 +200,7 @@ for episode in range(num_episodes):
     training_cum_rewards.append(cum_reward)
 
     # Validation checkpoint : If episode is validation checkpoint
-    if (episode % num_episodes_validation == 0):
+    if (episode in validation_checkpoints):
         # Info : Print validation checkpoint informations
         print(f"Validation checkpoint. Episode {episode}/{num_episodes} {training_completness:2.2f}%. Q-Explored {q_table_explored_completness:2.3f}%, epsilon: {epsilon}")
 

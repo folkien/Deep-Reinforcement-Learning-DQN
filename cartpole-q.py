@@ -33,6 +33,8 @@ state_bounds = list(zip(env.observation_space.low, env.observation_space.high))
 q_table_shape = n_states + [env.action_space.n]
 q_table = np.zeros(q_table_shape)
 
+# Number of training episodes
+num_episodes = 2000
 # Learning rate - used for updating Q-values.
 #  - Means how much we value new information compared to previous information.
 alpha = 0.1
@@ -43,12 +45,16 @@ gamma = 0.99
 # Epsilon - used for exploration.
 # - Means how much we choose to explore instead of exploit.
 epsilon = 1.0
-# Epsilon decay - used for decreasing epsilon over time.
-# - Means how much we decay epsilon after each episode. (reduce exploration time)
-epsilon_decay = 0.995
 # Min epsilon
 # - Means minimum value % of exploration.
-min_epsilon = 0.01
+min_epsilon = 0.05
+# Epsilon decay - used for decreasing epsilon over time.
+#   epsilon' = epsilon * epsilon_decay
+#   - means how much we decay epsilon after each episode. (reduce exploration time)
+#   - calculate based on trainig episodes number
+#   - After 80% of training time epislon should decay to min_epsilon
+epsilon_decay = (min_epsilon / epsilon) ** (1.0 / (num_episodes * 0.8))
+
 
 # Funkcja dyskretyzująca stan
 def discretize_state(state : np.ndarray, 
@@ -96,9 +102,12 @@ def update_q_table(state : tuple, action : CartPoleAction, reward : float, next_
     q_table[state + (action,)] += alpha * (reward + gamma * q_table[next_state + (best_next_action,)] - q_table[state + (action,)])
 
 # Loop of training : For N episodes
-for episode in range(1000):
+for episode in range(num_episodes):
+    # Training completness : Calculate
+    training_completness = episode / num_episodes * 100
+
     # Info : Print episode informations
-    print(f"Episde {episode} started. Epsilon: {epsilon}")
+    print(f"Episode {episode} started {training_completness:2.2f}%. Epsilon: {epsilon}")
 
     # State : Get initial episode state
     state_initial_dict = env.reset()
@@ -155,18 +164,20 @@ state = discretize_state(state_initial_dict[0], state_bounds, n_states)
 
 # Episode : Process episode until not done
 done = False
+cum_reward = 0
 while not done:
     # Action : Choose action according to epsilon-greedy policy
     action = choose_action(state, force_optimal=True)
 
     # Episode : Take action and get next state and reward
     next_state, reward, done, truncated,  _ = env_test.step(action)
+    cum_reward += reward
 
     # State : Discretize the next state to values according to n_states discretization
     next_state = discretize_state(next_state, state_bounds, n_states)
 
     # Informations : Print
-    print(f"EnvTest : State {state}, action {action}.")
+    print(f"EnvTest : State {state}, action {action}, total reward {cum_reward}.")
     
     # Time : Sleep
     sleep(0.1)

@@ -7,6 +7,8 @@ import pandas as pd
 from helpers.agent_testing import agent_test
 import math
 
+from helpers.ploting import plot_rewards
+
 # CartPole-v1 state:
 CartPoleState = namedtuple('CartPoleState', ['cart_pos', 'cart_vel', 'pole_angle', 'pole_ang_vel'])
 
@@ -25,6 +27,10 @@ n_states = [50, 50, 50, 50] # Liczba przedziałów dla każdego elementu stanu
 
 # State : Limits
 state_bounds = list(zip(env.observation_space.low, env.observation_space.high))
+
+# Velocity limits fixes below. Because of -inf +inf of observation space
+# used inside gym environment, there was discretization problem with such big 
+# values of velocity. To be honest, observable velocity values are :
 # - cart_vel : -20 - 20
 state_bounds[1] = [-20, 20]
 # - pole_vel : -100 - 100
@@ -125,6 +131,9 @@ def update_q_table(state : tuple, action : CartPoleAction, reward : float, next_
     # States explored : Add state to explored states
     q_table_explored.add(state)
 
+# Cumulative rewards : List of cumulative rewards for each episode
+cum_rewards = []
+    
 # Loop of training : For N episodes
 for episode in range(num_episodes):
     # Training completness : Calculate
@@ -133,12 +142,13 @@ for episode in range(num_episodes):
     # Q-Table  explored : Calculate
     q_table_explored_completness = len(q_table_explored) / np.product(q_table_shape) * 100
 
-
     # Info : Print episode informations
     print(f"Episode {episode}/{num_episodes} {training_completness:2.2f}%. Q-Explored {q_table_explored_completness}, epsilon: {epsilon}")
 
     # State : Get initial episode state
     state_initial_dict = env.reset()
+    # Cumulative reward : Reset
+    cum_reward = 0
 
     # State : Discretize the state to values according to n_states discretization
     state = discretize_state(state_initial_dict[0], state_bounds, n_states)
@@ -161,11 +171,17 @@ for episode in range(num_episodes):
         # State : Update state
         state = next_state
 
+        # Cumulative reward : Add reward
+        cum_reward += reward
+
     # Learning rate : Decay alpha after each episode
     alpha = max(alpha * alpha_decay, min_alpha)
 
     # Exploration : Decay epsilon after each episode
     epsilon = max(epsilon * epsilon_decay, min_epsilon) 
+
+    # Cumulative rewards : Add cumulative reward for this episode
+    cum_rewards.append(cum_reward)
 
 
 # Qtable filename with number of training episodes, epsilon and alpha
@@ -175,9 +191,17 @@ filename = f"q_table_{episode}_episodes_{epsilon}_epsilon_{alpha}_alpha.npy"
 # Q-Table : Save Q-table as numpy array pickle
 np.save(f"{models_directory}/{filename}", q_table)
 
+# Training rewards : Plot to file
+filename = f"training_rewards_{episode}_episodes_{epsilon}_epsilon_{alpha}_alpha.png"
+plot_rewards(f"{models_directory}/{filename}", 
+             cum_rewards,
+             data_label='Best cum. rewards reached during training',
+             )
+
 # Info : Print training informations
 print(f"Training completness: {training_completness:2.2f}%.")
 print(f"Q states explored {len(q_table_explored)} of {np.product(q_table_shape)}.")
+
 
 
 # Environment : Close
@@ -198,6 +222,12 @@ rewards = [ agent_test(env_test,
                     discretize_state, 
                     delay_time=None)
             for index in range(30) ]
+
+# Rewards : Plot to file
+filename = f"testing_rewards_{episode}_episodes_{epsilon}_epsilon_{alpha}_alpha.png"
+plot_rewards(f"{models_directory}/{filename}",
+                rewards,
+                data_label=f'Best cum. rewards reached during testing {len(rewards)} episodes')
 
 # Info : Print average reward and standard deviation
 print(f"Testing : Average reward: {np.mean(rewards)}")

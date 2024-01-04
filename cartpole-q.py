@@ -3,6 +3,7 @@ from enum import Enum
 from time import sleep, time
 import gym
 import numpy as np
+from helpers.agent_testing import agent_test
 import math
 
 # CartPole-v1 state:
@@ -34,7 +35,7 @@ q_table_shape = n_states + [env.action_space.n]
 q_table = np.zeros(q_table_shape)
 
 # Number of training episodes
-num_episodes = 2000
+num_episodes = 5000
 # Learning rate - used for updating Q-values.
 #  - Means how much we value new information compared to previous information.
 alpha = 0.1
@@ -56,7 +57,6 @@ min_epsilon = 0.05
 epsilon_decay = (min_epsilon / epsilon) ** (1.0 / (num_episodes * 0.8))
 
 
-# Funkcja dyskretyzująca stan
 def discretize_state(state : np.ndarray, 
                      state_bounds : list[tuple], 
                      n_states : list):
@@ -148,42 +148,42 @@ np.save(f"{models_directory}/{filename}", q_table)
 # Environment : Close
 env.close()
 
-# Test : Test model on single episode with human rendering
+# Test : Test model on many episodes and get average reward
 # --------------------------------------------------------
-print(f"Testing model on single episode with human rendering.")
+print(f"Testing model on environment.")
 
+# Inicjalizacja środowiska CartPole-v1
+env_test = gym.make("CartPole-v1")
+
+# Rewards : Get rewards for 10 episodes
+rewards = [ agent_test(env_test, 
+                    state_bounds, 
+                    n_states, 
+                    choose_action, 
+                    discretize_state, 
+                    delay_time=None)
+            for index in range(10) ]
+
+# Info : Print average reward and standard deviation
+print(f"Testing : Average reward: {np.mean(rewards)}")
+print(f"Testing : Standard deviation: {np.std(rewards)}")
+
+# Environment : Close
+env_test.close()
+
+# Preview : Test model on single episode with human rendering
+# --------------------------------------------------------
 # Inicjalizacja środowiska CartPole-v1
 env_test = gym.make("CartPole-v1", 
                     render_mode="human")
 
-# State : Get initial episode state
-state_initial_dict = env_test.reset()
-
-# State : Discretize the state to values according to n_states discretization
-state = discretize_state(state_initial_dict[0], state_bounds, n_states)
-
-# Episode : Process episode until not done
-done = False
-cum_reward = 0
-while not done:
-    # Action : Choose action according to epsilon-greedy policy
-    action = choose_action(state, force_optimal=True)
-
-    # Episode : Take action and get next state and reward
-    next_state, reward, done, truncated,  _ = env_test.step(action)
-    cum_reward += reward
-
-    # State : Discretize the next state to values according to n_states discretization
-    next_state = discretize_state(next_state, state_bounds, n_states)
-
-    # Informations : Print
-    print(f"EnvTest : State {state}, action {action}, total reward {cum_reward}.")
-    
-    # Time : Sleep
-    sleep(0.1)
-
-    # State : Update state
-    state = next_state
+# Test : Test model on single episode
+agent_test(env_test, 
+           state_bounds, 
+           n_states, 
+           choose_action, 
+           discretize_state, 
+           delay_time=0.1)
 
 # Environment : Close
 env_test.close()

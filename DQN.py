@@ -9,17 +9,18 @@ import random
 from collections import deque
 from keras.callbacks import TensorBoard
 
+
 class DQN:
 
-    def __init__(self, 
-                 gym_game, 
-                 epsilon=1, 
-                 epsilon_decay=0.995, 
-                 epsilon_min=0.01, 
-                 batch_size=32, 
-                 discount_factor=0.9, 
+    def __init__(self,
+                 gym_game,
+                 epsilon=1,
+                 epsilon_decay=0.995,
+                 epsilon_min=0.01,
+                 batch_size=32,
+                 discount_factor=0.9,
                  num_of_episodes=500,
-                 is_render:bool=False
+                 is_render: bool = False
                  ):
         self.epsilon = epsilon
         self.epsilon_decay = epsilon_decay
@@ -32,7 +33,7 @@ class DQN:
         # Render_mode : Set if enabled
         render_mode = None
         if is_render:
-            render_mode = "human"
+            render_mode = 'human'
 
         # Environment : Create the environment
         self.environment = gym.make(gym_game,
@@ -45,16 +46,16 @@ class DQN:
                 shape = self.environment.observation_space.shape
                 self.state_size = (shape[0], shape[1], shape[2])
                 self.s = shape[0]*shape[1]*shape[2]
-                self.state_mode = "observation"
+                self.state_mode = 'observation'
             except:
                 self.state_size = self.environment.observation_space.shape[0]
                 self.s = self.state_size
-                self.state_mode = "information"
-            self.state_container = "box"
+                self.state_mode = 'information'
+            self.state_container = 'box'
         except:
             self.state_size = self.environment.observation_space.n
-            self.state_mode = "information"
-            self.state_container = "discrete"
+            self.state_mode = 'information'
+            self.state_container = 'discrete'
 
         try:
             self.action_size = self.environment.action_space.shape[0]
@@ -65,8 +66,8 @@ class DQN:
                 self.action_size = self.environment.action_space.shape[0]
         self.a = self.action_size
 
-        print("state size is: ",self.state_size)
-        print("action size is: ", self.action_size)
+        print('state size is: ', self.state_size)
+        print('action size is: ', self.action_size)
         self.memory_min_size = 100
         self.memory = deque(maxlen=20000)
         self.model = self.create_model()
@@ -83,44 +84,46 @@ class DQN:
         except:
             input = Input(shape=(self.state_size,))
 
-        if self.state_mode == "information":
+        if self.state_mode == 'information':
             # if the state is not an image
-            out = Dense(24, activation="relu")(input)
-            out = Dense(24, activation="relu")(out)
-            out = Dense(self.action_size, activation="linear")(out)
+            out = Dense(24, activation='relu')(input)
+            out = Dense(24, activation='relu')(out)
+            out = Dense(self.action_size, activation='linear')(out)
 
-        elif self.state_mode == "observation":
+        elif self.state_mode == 'observation':
             # if the state is an image
-            out = Conv2D(128, kernel_size=(5,5), padding="same", activation="relu")(input)
+            out = Conv2D(128, kernel_size=(5, 5), padding='same',
+                         activation='relu')(input)
             out = MaxPooling2D()(out)
-            out = Conv2D(128, kernel_size=(3,3), padding="same", activation="relu")(out)
+            out = Conv2D(128, kernel_size=(3, 3),
+                         padding='same', activation='relu')(out)
             out = MaxPooling2D()(out)
             out = Flatten()(out)
-            out = Dense(24, activation="relu")(out)
-            out = Dense(24, activation="relu")(out)
-            out = Dense(self.action_size, activation="linear")(out)
+            out = Dense(24, activation='relu')(out)
+            out = Dense(24, activation='relu')(out)
+            out = Dense(self.action_size, activation='linear')(out)
 
         model = Model(inputs=input, outputs=out)
-        model.compile(optimizer="adam", loss="mse")
+        model.compile(optimizer='adam', loss='mse')
         return model
 
     def state_reshape(self, state):
         shape = state.shape
-        if self.state_mode == "observation":
+        if self.state_mode == 'observation':
             return np.reshape(state, [1, shape[0], shape[1], shape[2]])
-        elif self.state_mode == "information":
+        elif self.state_mode == 'information':
             return np.reshape(state, [1, shape[0]])
 
-    def act(self, state):
+    def act(self, state, force_optimal: bool = False):
         """
         act randomly by probability of epsilon or predict the next move by the neural network model
         :param state:
         :return:
         """
         # Random : Act randomly by probability of epsilon
-        if np.random.rand() < self.epsilon:
+        if (np.random.rand() < self.epsilon) and (not force_optimal):
             return random.randrange(self.action_size)
-        
+
         # Model : Predict the next move by the neural network model
         return np.argmax(self.model.predict(state)[0])
 
@@ -142,7 +145,7 @@ class DQN:
         :return:
         """
         # Check : If memory size is less than minimum size, return
-        if len(self.memory) < self.memory_min_size:
+        if len(self.memory) < self.batch_size:
             return
 
         # Epsilon : Decay to min
@@ -153,27 +156,37 @@ class DQN:
         batch = random.choices(self.memory,
                                k=self.batch_size)
 
-        # Batch : Train
-        for state, next_state, action, reward, done in batch:
-            target = reward
+        # Batch : To separate lists
+        states, next_states, rewards, actions, dones = zip(*batch)
 
-            if not done:
-                target = self.model.predict(next_state,verbose=0,use_multiprocessing=True)
-                target = reward + self.discount_factor * np.max(target[0])
+        # States : Fix
+        states = [state[0] for state in states]
+        next_states = [state[0] for state in next_states]
 
-            final_target = self.model.predict(state,
-                                              verbose=0,
-                                              use_multiprocessing=True)
-            final_target[0][action] = target
+        # Convert to numpy arrays
+        states = np.array(states)
+        next_states = np.array(next_states)
+        rewards = np.array(rewards)
+        actions = np.array(actions)
+        dones = np.array(dones)
 
-            # Model : Fit
-            self.model.fit(state,
-                           final_target,
-                           use_multiprocessing=True,
-                            callbacks=[self.tensorboard]
-                           )
+        # Przewidywanie dla obecnego i następnego stanu (2x forward pass dla całego batcha)
+        current_q = self.model.predict(states)
+        next_q = self.model.predict(next_states)
 
+        # Aktualizacja wartości Q
+        for i in range(len(batch)):
+            if dones[i]:
+                current_q[i, int(actions[i])] = rewards[i]
+            else:
+                current_q[i, int(actions[i])] = rewards[i] + \
+                    self.discount_factor * np.max(next_q[i])
 
+        # Trenowanie modelu za pomocą aktualnych wartości Q
+        self.model.fit(states,
+                       current_q,
+                       use_multiprocessing=True,
+                       callbacks=[self.tensorboard])
 
     def play(self):
         """
@@ -187,12 +200,13 @@ class DQN:
             r = []
             t = 0
 
-            while True:    
+            while True:
                 # Model : Act
                 action = self.act(state)
 
                 # Model : Get the next state
-                next_state, reward, done, _result, _dictionary = self.environment.step(action)
+                next_state, reward, done, _result, _dictionary = self.environment.step(
+                    action)
 
                 # Model : Reshape the next state
                 next_state = self.state_reshape(next_state)
@@ -208,12 +222,14 @@ class DQN:
                 # Episode : Print, if terminated
                 if done:
                     # Episode avg time
-                    episode_time_avg = (time.time() - start_time) / (episode + 1)
+                    episode_time_avg = (
+                        time.time() - start_time) / (episode + 1)
 
                     # Cumulative reward
                     cum_reward = np.sum(r)
-                    
-                    print(f"episode : {episode}, cum reward: {cum_reward}, episode avg time: {episode_time_avg}")
+
+                    print(
+                        f'episode : {episode}, cum reward: {cum_reward}, episode avg time: {episode_time_avg}')
 
                     break
 
@@ -221,24 +237,37 @@ class DQN:
 
         total_time = time.time() - start_time
 
-        print(f"Training finished.\n{self.num_of_episodes} episodes trained in {total_time} seconds.")
-        print(f"Avg episode time: {total_time / self.num_of_episodes} seconds.")
+        print(
+            f'Training finished.\n{self.num_of_episodes} episodes trained in {total_time} seconds.')
+        print(
+            f'Avg episode time: {total_time / self.num_of_episodes} seconds.')
 
         # Model : Save the model
-        self.model.save("./Model/DQN-"+self.game+"-"+str(self.num_of_episodes)+"-episodes-batchsize-"+str(self.batch_size))
-
+        self.model.save('./Model/DQN-'+self.game+'-'+str(self.num_of_episodes) +
+                        '-episodes-batchsize-'+str(self.batch_size))
 
     def save_info(self, episode, reward, time):
-        file = open("./Plot/DQN-"+self.game+"-"+str(self.num_of_episodes)+"-episodes-batchsize-"+str(self.batch_size), 'a')
-        file.write(str(episode)+" "+str(reward)+" "+str(time)+" \n")
+        file = open('./Plot/DQN-'+self.game+'-'+str(self.num_of_episodes) +
+                    '-episodes-batchsize-'+str(self.batch_size), 'a')
+        file.write(str(episode)+' '+str(reward)+' '+str(time)+' \n')
         file.close()
 
 
 # game = "Pong-v0" # bd
-game = "CartPole-v1" # bd
-dqn = DQN(game, 
-          num_of_episodes=500,
-          batch_size=4096,
+game = 'CartPole-v1'  # bd
+dqn = DQN(game,
+          num_of_episodes=2000,
+          batch_size=32,
           is_render=False
           )
+dqn.play()
+
+# Environment : Create the environment
+env_test = gym.make('CartPole-v1',
+                    render_mode='human')
+
+# Test play
+dqn.environment = env_test
+dqn.num_of_episodes = 5
+dqn.epsilon = 0
 dqn.play()

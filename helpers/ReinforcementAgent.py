@@ -139,9 +139,9 @@ class ReinforcementAgent:
                  next_state: tuple,
                  done: int):
         ''' Remember the experience in memory.'''
-        # Check : If done is True, then do not remember
-        if (done is True):
-            return
+        # # Check : If done is True, then do not remember
+        # if (done is True):
+        #     return
 
         # Memory : Add experience to memory
         self.memory.append(EpisodeStep(state=state,
@@ -271,7 +271,9 @@ class ReinforcementAgent:
             (input_batch, output_batch))
 
         # Model : Fit for created batch (input, output)
-        self.ModelFit(input_batch=dataset, output_batch=None, batch_size=None)
+        self.ModelFit(input_batch=dataset,
+                      output_batch=None,
+                      batch_size=None)
 
     def Replay_vec(self, epochs: int = 1, batches: int = 4):
         '''
@@ -292,13 +294,14 @@ class ReinforcementAgent:
                               k=self.batch_size*batches)
 
         # Batches: Convert to (input, output) pairs numpy arrays in a single operation.
-        states, next_states, rewards, actions = zip(*[(step.state, step.next_state, step.reward, step.action)
-                                                      for step in batch])
+        states, next_states, rewards, actions, dones = zip(*[(step.state, step.next_state, step.reward, step.action, step.done)
+                                                             for step in batch])
         # Convert to numpy arrays
         states = np.array(states)
         next_states = np.array(next_states)
         rewards = np.array(rewards)
         actions = np.array(actions)
+        dones = np.array(dones)
 
         # Przewidywanie dla obecnego i następnego stanu (2x forward pass dla całego batcha)
         current_q = self.model.predict(states)
@@ -306,8 +309,11 @@ class ReinforcementAgent:
 
         # Aktualizacja wartości Q
         for i in range(len(batch)):
-            current_q[i, actions[i]] = rewards[i] + \
-                self.gamma * np.max(next_q[i])
+            if dones[i]:
+                current_q[i, actions[i]] = rewards[i]
+            else:
+                current_q[i, actions[i]] = rewards[i] + \
+                    self.gamma * np.max(next_q[i])
 
         # Trenowanie modelu za pomocą aktualnych wartości Q
         self.model.fit(states,

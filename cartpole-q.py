@@ -7,26 +7,30 @@ from helpers.agent_testing import agent_test
 from helpers.ploting import plot_checkpoint_rewards, plot_rewards
 
 # CartPole-v1 state:
-CartPoleState = namedtuple('CartPoleState', ['cart_pos', 'cart_vel', 'pole_angle', 'pole_ang_vel'])
+CartPoleState = namedtuple(
+    'CartPoleState', ['cart_pos', 'cart_vel', 'pole_angle', 'pole_ang_vel'])
 
 # CartPole-v1 action: enum
 # - 0 - push cart to the left
 # - 1 - push cart to the right
+
+
 class CartPoleAction(int, Enum):
     Left = 0
     Right = 1
+
 
 # Inicjalizacja środowiska
 env = gym.make('CartPole-v1')
 
 # Podział stanu na przedziały (dyskretyzacja na 20 przedziałów)
-n_states = [50, 50, 50, 50] # Liczba przedziałów dla każdego elementu stanu
+n_states = [50, 50, 50, 50]  # Liczba przedziałów dla każdego elementu stanu
 
 # State : Limits
 state_bounds = list(zip(env.observation_space.low, env.observation_space.high))
 
 # Velocity limits fixes below. Because of -inf +inf of observation space
-# used inside gym environment, there was discretization problem with such big 
+# used inside gym environment, there was discretization problem with such big
 # values of velocity. To be honest, observable velocity values are :
 # - cart_vel : -20 - 20
 state_bounds[1] = [-20, 20]
@@ -46,23 +50,23 @@ q_table = np.zeros(q_table_shape)
 q_table_explored = set()
 
 # Number of training episodes
-num_episodes = 500_000
+num_episodes = 10_000
 # Number of episodes to test/average model
 num_episodes_test = 7
 # Validation checkpoints : Episode number when to test
-validation_checkpoints = [0, 
-                          100, 
+validation_checkpoints = [0,
+                          100,
                           250,
                           500,
-                          1_000, 
+                          1_000,
                           2_500,
                           5_000,
-                          10_000, 
+                          10_000,
                           25_000,
                           50_000,
-                          100_000, 
-                          250_000, 
-                          500_000 ]
+                          100_000,
+                          250_000,
+                          500_000]
 
 
 # Learning rate - used for updating Q-values.
@@ -77,7 +81,6 @@ min_alpha = 0.1
 #   - calculate based on trainig episodes number
 #   - After 50% of training time alpha should decay to min_alpha
 alpha_decay = (min_alpha / alpha) ** (1.0 / (num_episodes * 0.5))
-
 
 
 # Discount factor - used for updating Q-values
@@ -99,16 +102,17 @@ min_epsilon = 0.05
 epsilon_decay = (min_epsilon / epsilon) ** (1.0 / (num_episodes * 0.8))
 
 
-def discretize_state(state : np.ndarray, 
-                     state_bounds : list[tuple], 
-                     n_states : list):
+def discretize_state(state: np.ndarray,
+                     state_bounds: list[tuple],
+                     n_states: list):
     ''' Discretize a state vector to return a tuple of integers '''
     discretized = []
 
     # State  : For each state variable
     for i in range(len(state)):
         # State : Get the bounds for this variable
-        scaling = (state[i] - state_bounds[i][0]) / (state_bounds[i][1] - state_bounds[i][0])
+        scaling = (state[i] - state_bounds[i][0]) / \
+            (state_bounds[i][1] - state_bounds[i][0])
 
         # State : Get the value for this variable
         new_state = int(round((n_states[i] - 1) * scaling))
@@ -119,19 +123,22 @@ def discretize_state(state : np.ndarray,
 
     return CartPoleState(*discretized)
 
-def choose_action(state : tuple,
-                  force_optimal : bool = False
+
+def choose_action(state: tuple,
+                  force_optimal: bool = False
                   ) -> CartPoleAction:
     ''' Choose an action for the current state according to the Q policy'''
     # Exploration : If random number < epsilon and not force optimal
     if (np.random.random() < epsilon) and (not force_optimal):
         return CartPoleAction(env.action_space.sample())
-    
+
     # Q Policy : Best q value for this state (argmax returns the index of the max value)
     return CartPoleAction(np.argmax(q_table[state]))
 
 # Funkcja aktualizacji tabeli Q
-def update_q_table(state : tuple, action : CartPoleAction, reward : float, next_state : tuple):
+
+
+def update_q_table(state: tuple, action: CartPoleAction, reward: float, next_state: tuple):
     ''' Update the Q table with the new Q value'''
     # Action : as int
     action = int(action)
@@ -140,26 +147,29 @@ def update_q_table(state : tuple, action : CartPoleAction, reward : float, next_
     best_next_action = np.argmax(q_table[next_state])
 
     # Q-Table : Compute the TD error (Bellman equation)
-    q_table[state + (action,)] += alpha * (reward + gamma * q_table[next_state + (best_next_action,)] - q_table[state + (action,)])
+    q_table[state + (action,)] += alpha * (reward + gamma *
+                                           q_table[next_state + (best_next_action,)] - q_table[state + (action,)])
 
     # States explored : Add state to explored states
     q_table_explored.add(state)
+
 
 # Training cumulative rewards : List of cumulative rewards for each episode
 training_cum_rewards = []
 # Validation cumulative rewards : List of tuples (episode, average reward) for each validation checkpoint.
 validation_cum_rewards = []
-    
+
 # Loop of training : For N episodes
 for episode in range(num_episodes):
     # Training completness : Calculate
     training_completness = episode / num_episodes * 100
 
     # Q-Table  explored : Calculate
-    q_table_explored_completness = len(q_table_explored) / np.product(q_table_shape) * 100
+    q_table_explored_completness = len(
+        q_table_explored) / np.product(q_table_shape) * 100
 
     # Info : Print episode informations
-    print(f"Episode {episode}/{num_episodes} {training_completness:2.2f}%. Q-Explored {q_table_explored_completness:2.3f}%, epsilon: {epsilon}")
+    print(f'Episode {episode}/{num_episodes} {training_completness:2.2f}%. Q-Explored {q_table_explored_completness:2.3f}%, epsilon: {epsilon}')
 
     # State : Get initial episode state
     state_initial_dict = env.reset()
@@ -194,7 +204,7 @@ for episode in range(num_episodes):
     alpha = max(alpha * alpha_decay, min_alpha)
 
     # Exploration : Decay epsilon after each episode
-    epsilon = max(epsilon * epsilon_decay, min_epsilon) 
+    epsilon = max(epsilon * epsilon_decay, min_epsilon)
 
     # Cumulative rewards : Add cumulative reward for this episode
     training_cum_rewards.append(cum_reward)
@@ -202,37 +212,39 @@ for episode in range(num_episodes):
     # Validation checkpoint : If episode is validation checkpoint
     if (episode in validation_checkpoints):
         # Info : Print validation checkpoint informations
-        print(f"Validation checkpoint. Episode {episode}/{num_episodes} {training_completness:2.2f}%. Q-Explored {q_table_explored_completness:2.3f}%, epsilon: {epsilon}")
+        print(
+            f'Validation checkpoint. Episode {episode}/{num_episodes} {training_completness:2.2f}%. Q-Explored {q_table_explored_completness:2.3f}%, epsilon: {epsilon}')
 
         # Validation : Test model on single episode
-        validation_test_rewards  = [ agent_test(env, 
-                                           state_bounds, 
-                                           n_states, 
-                                           choose_action, 
-                                           discretize_state, 
-                                           delay_time=None) for _index in range(num_episodes_test) ]
+        validation_test_rewards = [agent_test(env,
+                                              state_bounds,
+                                              n_states,
+                                              choose_action,
+                                              discretize_state,
+                                              delay_time=None) for _index in range(num_episodes_test)]
 
         # Validation cumulative rewards : Add cumulative reward for this episode
-        validation_cum_rewards.append((episode, np.median(validation_test_rewards)))
+        validation_cum_rewards.append(
+            (episode, np.median(validation_test_rewards)))
 
 
 # Qtable filename with number of training episodes, epsilon and alpha
-models_directory = "Model"
-filename = f"q_table_{episode}_episodes_{epsilon}_epsilon_{alpha}_alpha.npy"
+models_directory = 'Model'
+filename = f'q_table_{episode}_episodes_{epsilon}_epsilon_{alpha}_alpha.npy'
 
 # Q-Table : Save Q-table as numpy array pickle
-np.save(f"{models_directory}/{filename}", q_table)
+np.save(f'{models_directory}/{filename}', q_table)
 
 # Training rewards : Plot to file
-filename = f"training_rewards_{episode}_episodes_{epsilon}_epsilon_{alpha}_alpha.png"
-plot_rewards(f"{models_directory}/{filename}", 
+filename = f'training_rewards_{episode}_episodes_{epsilon}_epsilon_{alpha}_alpha.png'
+plot_rewards(f'{models_directory}/{filename}',
              training_cum_rewards,
              data_label='Best cum. rewards reached during training',
              )
 
 # Training checkpoint average rewards : Plot to file
-filename = f"validation_rewards_{episode}_episodes_{epsilon}_epsilon_{alpha}_alpha.png"
-plot_checkpoint_rewards(f"{models_directory}/{filename}",
+filename = f'validation_rewards_{episode}_episodes_{epsilon}_epsilon_{alpha}_alpha.png'
+plot_checkpoint_rewards(f'{models_directory}/{filename}',
                         validation_cum_rewards,
                         data_label=f'Cum. rewards reached during validation {len(validation_cum_rewards)} checkpoints.',
                         xlabel='Validation checkpoint episode',
@@ -240,9 +252,9 @@ plot_checkpoint_rewards(f"{models_directory}/{filename}",
                         )
 
 # Info : Print training informations
-print(f"Training completness: {training_completness:2.2f}%.")
-print(f"Q states explored {len(q_table_explored)} of {np.product(q_table_shape)}.")
-
+print(f'Training completness: {training_completness:2.2f}%.')
+print(
+    f'Q states explored {len(q_table_explored)} of {np.product(q_table_shape)}.')
 
 
 # Environment : Close
@@ -250,48 +262,50 @@ env.close()
 
 # Test : Test model on many episodes and get average reward
 # --------------------------------------------------------
-print(f"Testing model on environment.")
+print(f'Testing model on environment.')
 
 # Inicjalizacja środowiska CartPole-v1
-env_test = gym.make("CartPole-v1")
+env_test = gym.make('CartPole-v1')
 
 # Rewards : Get rewards for 10 episodes
-rewards = [ agent_test(env_test, 
-                    state_bounds, 
-                    n_states, 
-                    choose_action, 
-                    discretize_state, 
-                    delay_time=None)
-            for index in range(num_episodes_test) ]
+rewards = [agent_test(env_test,
+                      state_bounds,
+                      n_states,
+                      choose_action,
+                      discretize_state,
+                      delay_time=None)
+           for index in range(num_episodes_test)]
 
 # Rewards : Plot to file
-filename = f"testing_rewards_{episode}_episodes_{epsilon}_epsilon_{alpha}_alpha.png"
-plot_rewards(f"{models_directory}/{filename}",
-                rewards,
-                data_label=f'Best cum. rewards reached during testing {len(rewards)} episodes')
+filename = f'testing_rewards_{episode}_episodes_{epsilon}_epsilon_{alpha}_alpha.png'
+plot_rewards(f'{models_directory}/{filename}',
+             rewards,
+             data_label=f'Best cum. rewards reached during testing {len(rewards)} episodes')
 
 # Info : Print average reward and standard deviation
-print(f"Testing : Average reward: {np.mean(rewards)}")
-print(f"Testing : Standard deviation: {np.std(rewards)}")
+print(f'Testing : Average reward: {np.mean(rewards)}')
+print(f'Testing : Standard deviation: {np.std(rewards)}')
 
 
 # Results dataframe : Load if exists
-tests_directory = "tests"
+tests_directory = 'tests'
 try:
-    results_df = pd.read_csv(f"{tests_directory}/results.csv", sep=";", index_col=False)
+    results_df = pd.read_csv(
+        f'{tests_directory}/results.csv', sep=';', index_col=False)
 except:
-    results_df = pd.DataFrame(columns=['episodes', 'reward_mean', 'reward_std'])
-    
+    results_df = pd.DataFrame(
+        columns=['episodes', 'reward_mean', 'reward_std'])
 
-# Dataframe : Create current results dataframe    
+
+# Dataframe : Create current results dataframe
 results_current_df = pd.DataFrame(columns=['episodes', 'reward_mean', 'reward_std'],
-                                    data=[[num_episodes, np.mean(rewards), np.std(rewards)]])
+                                  data=[[num_episodes, np.mean(rewards), np.std(rewards)]])
 
 # Results dataframe : Concatenate
 results_df = pd.concat([results_df, results_current_df], axis=0)
 
 # Results dataframe : Save
-results_df.to_csv(f"{tests_directory}/results.csv", index=False, sep=";")
+results_df.to_csv(f'{tests_directory}/results.csv', index=False, sep=';')
 
 
 # Environment : Close
@@ -300,20 +314,16 @@ env_test.close()
 # Preview : Test model on single episode with human rendering
 # --------------------------------------------------------
 # Inicjalizacja środowiska CartPole-v1
-env_test = gym.make("CartPole-v1", 
-                    render_mode="human")
+env_test = gym.make('CartPole-v1',
+                    render_mode='human')
 
 # Test : Test model on single episode
-agent_test(env_test, 
-           state_bounds, 
-           n_states, 
-           choose_action, 
-           discretize_state, 
+agent_test(env_test,
+           state_bounds,
+           n_states,
+           choose_action,
+           discretize_state,
            delay_time=0.1)
 
 # Environment : Close
 env_test.close()
-
-
-
-

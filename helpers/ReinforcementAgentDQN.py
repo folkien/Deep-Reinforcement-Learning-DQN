@@ -40,13 +40,16 @@ class ReinforcementAgentDQN(ReinforcementAgent):
                                   use_multiprocessing=use_multiprocessing)
 
     def ModelFit(self,
-                 state: tuple,
-                 target: tuple,
+                 input_batch: tuple,
+                 output_batch: tuple,
+                 batch_size: int = 32,
                  verbose: int = 0,
                  use_multiprocessing: bool = False) -> int:
         ''' Fit the model state -> target.'''
-        return self.model.fit(self.state_reshape(state),
-                              target,
+        return self.model.fit(input_batch,
+                              output_batch,
+                              batch_size=batch_size,
+                              epochs=10,
                               use_multiprocessing=True,
                               callbacks=[self.tensorboard])
 
@@ -71,3 +74,12 @@ class ReinforcementAgentDQN(ReinforcementAgent):
                    show_shapes=True,
 
                    show_layer_names=True)
+
+    def Save(self, directorypath: str = 'Model'):
+        ''' Save model.'''
+        if (self.model is None):
+            raise Exception('Model not initialized.')
+
+        # Model : Save the model
+        self.model.save(
+            f'{directorypath}/DQN_{self.num_epochs}_{self.batch_size}')

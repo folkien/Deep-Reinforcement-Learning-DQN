@@ -9,6 +9,7 @@ import gym
 import random
 from collections import deque, namedtuple
 from keras.callbacks import TensorBoard
+import tensorflow as tf
 
 # Episode step as namedtuple
 EpisodeStep = namedtuple('EpisodeStep',
@@ -21,8 +22,10 @@ class ReinforcementAgent:
     # Environment : The environment handle to train and play in.
     env: gym.Env = field(init=True, default=None)
 
+    # Training epochs
+    num_epochs: int = field(init=True, default=None)
     # Learning rate - Means how much we value new information compared to previous information.
-    alpha: float = 0.8
+    alpha: float = 0.9
     # Min alpha - minimum value of learning rate
     min_alpha: float = 0.1
     # Epsilon - Means how much we choose to explore instead of exploit.
@@ -98,15 +101,18 @@ class ReinforcementAgent:
     def ModelFit(self,
                  state: tuple,
                  target: tuple,
+                 batch_size: int = 32,
                  verbose: int = 0,
                  use_multiprocessing: bool = False) -> int:
         ''' Fit the model state -> target.'''
         raise NotImplementedError('ModelFit method is not implemented.')
 
-    def Act(self, state: tuple) -> int:
+    def Act(self,
+            state: tuple,
+            force_optimal: bool = False) -> int:
         ''' Act according to epsilon-greedy policy.'''
-        # Random : Act randomly by probability of epsilon
-        if np.random.rand() < self.epsilon:
+        # Random : Act randomly by probability of epsilon, if not force optimal
+        if (np.random.rand() < self.epsilon) and (not force_optimal):
             return self.env.action_space.sample()
 
         # Model : Predict
@@ -126,6 +132,11 @@ class ReinforcementAgent:
                  next_state: tuple,
                  done: int):
         ''' Remember the experience in memory.'''
+        # Check : If done is True, then do not remember
+        if (done is True):
+            return
+
+        # Memory : Add experience to memory
         self.memory.append(EpisodeStep(state=state,
                                        action=action,
                                        reward=reward,
@@ -133,11 +144,20 @@ class ReinforcementAgent:
                                        done=done
                                        ))
 
-    def Train(self, num_episodes: int):
+    def Train(self, num_epochs: int) -> list[float]:
         ''' Use experiences in memory to train the agent.'''
+        # List of training cumulative rewards
+        training_rewards = []
+        # Store num of epochs
+        self.num_epochs = num_epochs
+        # Number of play episodes in one epoch
+        num_play_episodes = 10
+        # Number of train/replay episodes in one epoch
+        num_replay_episodes = 100
+
         # After 50% of training time alpha should decay to min_alpha
         alpha_decay = (self.min_alpha / self.alpha) ** (1.0 /
-                                                        (num_episodes * 0.5))
+                                                        (num_epochs * 0.5))
 
         # Epsilon decay - used for decreasing epsilon over time.
         #   epsilon' = epsilon * epsilon_decay
@@ -145,37 +165,61 @@ class ReinforcementAgent:
         #   - calculate based on trainig episodes number
         #   - After 80% of training time epislon should decay to min_epsilon
         epsilon_decay = (self.min_epsilon /
-                         self.epsilon) ** (1.0 / (num_episodes * 0.8))
+                         self.epsilon) ** (1.0 / (num_epochs * 0.8))
 
         # Loop of training : For N episodes
-        for episode in range(num_episodes):
+        for epoch in range(num_epochs):
             # Training completness : Calculate
-            training_completness = episode / num_episodes * 100
+            training_completness = epoch / num_epochs * 100
 
-            # Info : Print episode informations
+            # Memory : Clear memory (for epoch and new model)
+            self.Forget()
+
+            # Info : Print last episode informations
+            print(f'Epoch {epoch}/{num_epochs} {training_completness:2.2f}%,'
+                  f'epsilon: {self.epsilon:2.2f}, learning rate: {self.alpha:2.2f}')
+
+            # 1. Memory collecting
+            # - Play N episodes and collect experiences in memory
             print(
-                f'Episode {episode}/{num_episodes} {training_completness:2.2f}%, epsilon: {self.epsilon:2.2f}')
+                f'Collecting memory for replay... ({num_play_episodes} episodes)')
+            for playing_episode in range(num_play_episodes):
+                self.Play()
 
-            # Episode : Play single episode of the environment
-            cum_reward = self.Play()
+            # 2. Train/Replay
+            # - Replay memory stored experiences.
+            print(
+                f'Replaying {self.memory_len} memories for {num_replay_episodes} replay episodes...')
+            self.Replay_vec(epochs=num_replay_episodes)
 
-            # Replay : Replay memory stored experiences
-            self.Replay(alpha_decay, epsilon_decay)
+            # Learning rate : Decay alpha after each episode
+            self.alpha = max(self.alpha * alpha_decay, self.min_alpha)
+            # Exploration : Decay epsilon after each episode
+            self.epsilon = max(self.epsilon * epsilon_decay, self.min_epsilon)
 
-            # # Cumulative rewards : Add cumulative reward for this episode
-            # training_cum_rewards.append(cum_reward)
+            # 3. Statistics
+            # - Model current policy reward.
+            reward = self.Play(force_optimal=True)
+            print(f'Play avg. reward: {reward}')
+            training_rewards.append(reward)
 
-    def Replay(self, alpha_decay: float, epsilon_decay: float):
+        return training_rewards
+
+    def Replay(self):
         ''' Replay memory stored experiences.'''
         # Check : If memory size is less than minimum size, return
         if (self.memory_len < 1):
             return
 
-        # Memory : Sample a batch (randomly because of correlation between experiences)
+        # Batch : Sample from memory (randomly because of correlation between experiences)
         batch: list[EpisodeStep] = random.choices(self.memory,
                                                   k=self.batch_size)
 
-        # Batch : Replay training
+        # Training : Input batch (states)
+        input_batch = np.array([step.state for step in batch])
+        # Training : Output batch (new policies)
+        output_batch = []
+        # Batch : Convert to (input, output) pairs.
         for step in batch:
             # Check : Episode ended, do nothing (missing next state)
             if step.done is None:
@@ -199,17 +243,57 @@ class ReinforcementAgent:
             # Policy : Update
             policy[0][step.action] = next_reward
 
-            # Model : Fit for (state, new policy).
-            self.ModelFit(step.state,
-                          policy)
+            # Output batch : Add policy
+            output_batch.append(policy[0])
 
-        # Learning rate : Decay alpha after each episode
-        self.alpha = max(self.alpha * alpha_decay, self.min_alpha)
+        # Output batch : Convert to numpy array
+        output_batch = np.array(output_batch)
 
-        # Exploration : Decay epsilon after each episode
-        self.epsilon = max(self.epsilon * epsilon_decay, self.min_epsilon)
+        # Create tensorflow dataset
+        dataset = tf.data.Dataset.from_tensor_slices(
+            (input_batch, output_batch))
 
-    def Play(self) -> float:
+        # Model : Fit for created batch (input, output)
+        self.ModelFit(input_batch=dataset, output_batch=None, batch_size=None)
+
+    def Replay_vec(self, epochs: int = 1):
+        '''
+            Replay memory stored experiences. Code vectorized
+            for better performance of training.
+
+            Parameters
+            ----------
+            epochs : int
+                Number of epochs to train.
+        '''
+        if len(self.memory) < self.batch_size:
+            return
+
+        batch = random.sample(self.memory, k=self.batch_size)
+        states = np.array([step.state for step in batch])
+        next_states = np.array([step.next_state for step in batch])
+        done = np.array([step.done for step in batch])
+        rewards = np.array([step.reward for step in batch])
+        actions = np.array([step.action for step in batch])
+
+        # Przewidywanie dla obecnego i następnego stanu (2x forward pass dla całego batcha)
+        current_q = self.model.predict(states)
+        next_q = self.model.predict(next_states)
+
+        # Aktualizacja wartości Q
+        for i in range(self.batch_size):
+            current_q[i, actions[i]] = self.alpha * \
+                (rewards[i] + self.gamma * np.max(next_q[i]))
+
+        # Trenowanie modelu za pomocą aktualnych wartości Q
+        self.model.fit(states,
+                       current_q,
+                       batch_size=self.batch_size,
+                       epochs=epochs,
+                       use_multiprocessing=True,
+                       callbacks=[self.tensorboard])
+
+    def Play(self, force_optimal: bool = False) -> float:
         ''' Play single episode of the environment.'''
         # State : Get initial episode state
         state_initial_dict = self.env.reset()
@@ -221,7 +305,7 @@ class ReinforcementAgent:
         done = False
         while not done:
             # Action : Get action
-            action = self.Act(state)
+            action = self.Act(state, force_optimal=force_optimal)
 
             # Episode : Take action and get next state and reward
             next_state, reward, done, truncated,  _ = self.env.step(action)
@@ -241,6 +325,6 @@ class ReinforcementAgent:
 
         return cum_reward
 
-    def Save(self, episode: int, reward: float, time: int):
+    def Save(self, directorypath: str):
         ''' Save model.'''
-        # @TODO: Implement training
+        # @TODO

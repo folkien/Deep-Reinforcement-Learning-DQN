@@ -46,7 +46,7 @@ class ReinforcementAgentDQN(ReinforcementAgent):
                  use_multiprocessing: bool = False) -> int:
         ''' Fit the model state -> target.'''
         return self.model.fit(self.state_reshape(state),
-                              self.state_reshape(target),
+                              target,
                               use_multiprocessing=True,
                               callbacks=[self.tensorboard])
 
@@ -69,4 +69,5 @@ class ReinforcementAgentDQN(ReinforcementAgent):
         plot_model(model,
                    to_file=f'Model/{self.__class__.__name__}.png',
                    show_shapes=True,
+
                    show_layer_names=True)

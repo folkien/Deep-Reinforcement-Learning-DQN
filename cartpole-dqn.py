@@ -23,7 +23,7 @@ class CartPoleAction(int, Enum):
 
 
 # Number of training episodes
-num_episodes = 1_000
+num_episodes = 50
 # Number of episodes to test/average model
 num_episodes_test = 7
 # Validation checkpoints : Episode number when to test
@@ -52,6 +52,18 @@ agent = ReinforcementAgentDQN(env=env)
 agent.Train(num_episodes=num_episodes)
 
 
+# Preview : Test model on single episode with human rendering
+# --------------------------------------------------------
+# Inicjalizacja środowiska CartPole-v1
+env_test = gym.make('CartPole-v1',
+                    render_mode='human')
+
+# Test : Test model on single episode
+agent.env = env_test
+agent.Play()
+
+# Environment : Close
+env_test.close()
 sys.exit(0)
 
 # Qtable filename with number of training episodes, epsilon and alpha

@@ -10,9 +10,9 @@ import random
 from collections import deque, namedtuple
 from keras.callbacks import TensorBoard
 
-# Batch as namedtuple
-Batch = namedtuple(
-    'Batch', ['state', 'next_state', 'action', 'reward', 'done'])
+# Episode step as namedtuple
+EpisodeStep = namedtuple('EpisodeStep',
+                         ['state', 'action', 'reward', 'next_state', 'done'])
 
 
 @dataclass
@@ -121,12 +121,17 @@ class ReinforcementAgent:
 
     def Remember(self,
                  state: tuple,
-                 next_state: tuple,
-                 action: int,
+                 action: tuple,
                  reward: float,
+                 next_state: tuple,
                  done: int):
         ''' Remember the experience in memory.'''
-        self.memory.append(Batch(state, next_state, action, reward, done))
+        self.memory.append(EpisodeStep(state=state,
+                                       action=action,
+                                       reward=reward,
+                                       next_state=next_state,
+                                       done=done
+                                       ))
 
     def Train(self, num_episodes: int):
         ''' Use experiences in memory to train the agent.'''
@@ -166,24 +171,37 @@ class ReinforcementAgent:
         if (self.memory_len < 1):
             return
 
-        # Memory : Sample a batch
-        batch = random.choices(self.memory,
-                               k=self.batch_size)
+        # Memory : Sample a batch (randomly because of correlation between experiences)
+        batch: list[EpisodeStep] = random.choices(self.memory,
+                                                  k=self.batch_size)
 
-        # Batch : Train
-        for state, next_state, action, reward, done in batch:
-            target = reward
+        # Batch : Replay training
+        for step in batch:
+            # Check : Episode ended, do nothing (missing next state)
+            if step.done is None:
+                continue
 
-            if not done:
-                target = self.ModelPredict(next_state)
+            # # Q-Table : Compute the TD error (Bellman equation)
+            # q_table[state + (action,)] += alpha * (reward + gamma *
+            #                                     q_table[next_state + (best_next_action,)] - q_table[state + (action,)])
 
-                target = reward + self.discount_factor * np.max(target[0])
+            # Policy : Get model policy for current state
+            policy = self.ModelPredict(step.state)
+            # Policy (next step) : Get model policy for next state
+            policy_next = self.ModelPredict(step.next_state)
+            # Policy best action (next step) : Get best action from policy
+            policy_next_best_action = np.max(policy_next[0])
 
-            final_target = self.ModelPredict(state)
-            final_target[0][action] = target
+            # Reward : Update reward
+            next_reward = self.alpha * \
+                (step.reward + self.gamma * policy_next_best_action)
 
-            # Model : Fit
-            self.ModelFit(state, target)
+            # Policy : Update
+            policy[0][step.action] = next_reward
+
+            # Model : Fit for (state, new policy).
+            self.ModelFit(step.state,
+                          policy)
 
         # Learning rate : Decay alpha after each episode
         self.alpha = max(self.alpha * alpha_decay, self.min_alpha)
@@ -209,7 +227,11 @@ class ReinforcementAgent:
             next_state, reward, done, truncated,  _ = self.env.step(action)
 
             # Model : Remember the experience
-            self.Remember(state, next_state, action, reward, done)
+            self.Remember(state=state,
+                          action=action,
+                          reward=reward,
+                          next_state=next_state,
+                          done=done)
 
             # State : Update state
             state = next_state

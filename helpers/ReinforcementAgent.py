@@ -7,8 +7,12 @@ from dataclasses import dataclass, field
 import numpy as np
 import gym
 import random
-from collections import deque
+from collections import deque, namedtuple
 from keras.callbacks import TensorBoard
+
+# Batch as namedtuple
+Batch = namedtuple(
+    'Batch', ['state', 'next_state', 'action', 'reward', 'done'])
 
 
 @dataclass
@@ -38,7 +42,7 @@ class ReinforcementAgent:
     # Tensorboard : Tensorboard callback for logging
     tensorboard: TensorBoard = field(init=False, default=None)
 
-    def ___post_init__(self):
+    def __post_init__(self):
         ''' Initialize object.'''
         # Environment : If missing then raise error
         if (self.env is None):
@@ -59,6 +63,9 @@ class ReinforcementAgent:
         if (self.env is None):
             return 0
 
+        if (len(self.env.action_space.shape) > 0):
+            return self.env.action_space.shape[0]
+
         return self.env.action_space.n
 
     @property
@@ -67,7 +74,15 @@ class ReinforcementAgent:
         if (self.env is None):
             return 0
 
+        if (len(self.env.observation_space.shape) > 0):
+            return self.env.observation_space.shape[0]
+
         return self.env.observation_space.n
+
+    @property
+    def memory_len(self) -> int:
+        ''' Get the memory length.'''
+        return len(self.memory)
 
     def Init(self):
         '''Initialize the agent and model. '''
@@ -104,9 +119,14 @@ class ReinforcementAgent:
         ''' Forget all the experiences in memory.'''
         self.memory.clear()
 
-    def Remember(self, state: tuple, next_state: tuple, action: int, reward: float, done: int):
+    def Remember(self,
+                 state: tuple,
+                 next_state: tuple,
+                 action: int,
+                 reward: float,
+                 done: int):
         ''' Remember the experience in memory.'''
-        self.memory.append((state, next_state, action, reward, done))
+        self.memory.append(Batch(state, next_state, action, reward, done))
 
     def Train(self, num_episodes: int):
         ''' Use experiences in memory to train the agent.'''
@@ -143,7 +163,7 @@ class ReinforcementAgent:
     def Replay(self, alpha_decay: float, epsilon_decay: float):
         ''' Replay memory stored experiences.'''
         # Check : If memory size is less than minimum size, return
-        if len(self.memory) < self.memory_min_size:
+        if (self.memory_len < 1):
             return
 
         # Memory : Sample a batch
@@ -188,11 +208,11 @@ class ReinforcementAgent:
             # Episode : Take action and get next state and reward
             next_state, reward, done, truncated,  _ = self.env.step(action)
 
-            # State : Update state
-            state = next_state
-
             # Model : Remember the experience
             self.Remember(state, next_state, action, reward, done)
+
+            # State : Update state
+            state = next_state
 
             # Cumulative reward : Add reward
             cum_reward += reward

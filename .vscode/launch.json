@@ -5,6 +5,14 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Cartpole.DQN",
+            "type": "python",
+            "request": "launch",
+            "program": "cartpole-dqn.py",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
             "name": "Python: bieżący plik",
             "type": "python",
             "request": "launch",

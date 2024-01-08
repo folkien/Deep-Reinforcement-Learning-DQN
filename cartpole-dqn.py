@@ -23,7 +23,7 @@ class CartPoleAction(int, Enum):
 
 
 # Number of training episodes
-num_episodes = 60
+num_episodes = 100
 # Number of episodes to test/average model
 num_episodes_test = 7
 # Validation checkpoints : Episode number when to test

@@ -4,6 +4,7 @@
     and playing.
 '''
 from dataclasses import dataclass, field
+import time
 import numpy as np
 import gym
 import random
@@ -37,8 +38,10 @@ class ReinforcementAgent:
 
     # Batch size - How many experiences we use in each training batch
     batch_size: int = field(default=32)
+    # Batches number per epoch
+    num_batches: int = field(init=True, default=4)
     # Memory size - How many experiences we store in memory
-    memory_size: int = field(default=10000)
+    memory_size: int = field(default=1000)
     # Memory : deque - A list-like data structure that can be efficiently appended to and popped from either side.
     memory: deque = field(init=False, default=None)
 
@@ -52,7 +55,7 @@ class ReinforcementAgent:
             raise ValueError('Environment is missing.')
 
         # Memory : Initialize memory
-        self.memory = deque(maxlen=self.memory_size)
+        self.memory = deque(maxlen=self.batch_size * self.num_batches)
 
         # Tensorboard : Initialize tensorboard
         self.tensorboard = TensorBoard('./logs', update_freq=1)
@@ -86,6 +89,10 @@ class ReinforcementAgent:
     def memory_len(self) -> int:
         ''' Get the memory length.'''
         return len(self.memory)
+
+    def IsMemoryFull(self) -> bool:
+        ''' Check if memory is full.'''
+        return self.memory_len == self.memory.maxlen
 
     def Init(self):
         '''Initialize the agent and model. '''
@@ -153,11 +160,11 @@ class ReinforcementAgent:
         # Number of play episodes in one epoch
         num_play_episodes = 10
         # Number of train/replay episodes in one epoch
-        num_replay_episodes = 100
+        num_replay_episodes = 10
 
-        # After 50% of training time alpha should decay to min_alpha
+        # After 80% of training time alpha should decay to min_alpha
         alpha_decay = (self.min_alpha / self.alpha) ** (1.0 /
-                                                        (num_epochs * 0.5))
+                                                        (num_epochs * 0.8))
 
         # Epsilon decay - used for decreasing epsilon over time.
         #   epsilon' = epsilon * epsilon_decay
@@ -166,6 +173,9 @@ class ReinforcementAgent:
         #   - After 80% of training time epislon should decay to min_epsilon
         epsilon_decay = (self.min_epsilon /
                          self.epsilon) ** (1.0 / (num_epochs * 0.8))
+
+        # Time : Start time
+        start_time = time.time()
 
         # Loop of training : For N episodes
         for epoch in range(num_epochs):
@@ -181,9 +191,8 @@ class ReinforcementAgent:
 
             # 1. Memory collecting
             # - Play N episodes and collect experiences in memory
-            print(
-                f'Collecting memory for replay... ({num_play_episodes} episodes)')
-            for playing_episode in range(num_play_episodes):
+            print(f'Collecting full memory for replay...')
+            while (not self.IsMemoryFull()):
                 self.Play()
 
             # 2. Train/Replay
@@ -202,6 +211,14 @@ class ReinforcementAgent:
             reward = self.Play(force_optimal=True)
             print(f'Play avg. reward: {reward}')
             training_rewards.append(reward)
+
+        # Time : End time
+        end_time = time.time()
+
+        # Info : Print training time
+        print(f'Training time: {end_time - start_time}s')
+        print(
+            f'Training time per epoch: {(end_time - start_time) / num_epochs}s')
 
         return training_rewards
 
@@ -256,7 +273,7 @@ class ReinforcementAgent:
         # Model : Fit for created batch (input, output)
         self.ModelFit(input_batch=dataset, output_batch=None, batch_size=None)
 
-    def Replay_vec(self, epochs: int = 1):
+    def Replay_vec(self, epochs: int = 1, batches: int = 4):
         '''
             Replay memory stored experiences. Code vectorized
             for better performance of training.
@@ -266,24 +283,31 @@ class ReinforcementAgent:
             epochs : int
                 Number of epochs to train.
         '''
-        if len(self.memory) < self.batch_size:
+        # Check : If memory size is less than minimum size, return
+        if len(self.memory) == 0:
             return
 
-        batch = random.sample(self.memory, k=self.batch_size)
-        states = np.array([step.state for step in batch])
-        next_states = np.array([step.next_state for step in batch])
-        done = np.array([step.done for step in batch])
-        rewards = np.array([step.reward for step in batch])
-        actions = np.array([step.action for step in batch])
+        # Batches : Sample from memory (randomly because of correlation between experiences)
+        batch = random.sample(self.memory,
+                              k=self.batch_size*batches)
+
+        # Batches: Convert to (input, output) pairs numpy arrays in a single operation.
+        states, next_states, rewards, actions = zip(*[(step.state, step.next_state, step.reward, step.action)
+                                                      for step in batch])
+        # Convert to numpy arrays
+        states = np.array(states)
+        next_states = np.array(next_states)
+        rewards = np.array(rewards)
+        actions = np.array(actions)
 
         # Przewidywanie dla obecnego i następnego stanu (2x forward pass dla całego batcha)
         current_q = self.model.predict(states)
         next_q = self.model.predict(next_states)
 
         # Aktualizacja wartości Q
-        for i in range(self.batch_size):
-            current_q[i, actions[i]] = self.alpha * \
-                (rewards[i] + self.gamma * np.max(next_q[i]))
+        for i in range(len(batch)):
+            current_q[i, actions[i]] = rewards[i] + \
+                self.gamma * np.max(next_q[i])
 
         # Trenowanie modelu za pomocą aktualnych wartości Q
         self.model.fit(states,
@@ -327,4 +351,4 @@ class ReinforcementAgent:
 
     def Save(self, directorypath: str):
         ''' Save model.'''
-        # @TODO
+        raise NotImplementedError('Save method is not implemented.')

@@ -34,7 +34,23 @@ class ReinforcementAgentDQN(ReinforcementAgent):
                      state: tuple,
                      verbose: int = 0,
                      use_multiprocessing: bool = False) -> int:
-        ''' Predict an action from a state.'''
+        '''
+            Predict an action from a state.
+
+            Parameters
+            ----------
+            state : tuple
+                Current state.
+            verbose : int
+                Verbosity mode.
+            use_multiprocessing : bool
+                Use multiprocessing.
+
+            Returns
+            -------
+            int
+                Predicted action.
+        '''
         return self.model.predict(self.state_reshape(state),
                                   verbose=verbose,
                                   use_multiprocessing=use_multiprocessing)
